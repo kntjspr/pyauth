@@ -16,10 +16,66 @@ from Crypto.Cipher import PKCS1_OAEP
 import sqlite3, json, hmac
 from funcs import encryption, db
 
-CONFIG = json.loads(open("config.json", "r", encoding="utf-8").read())
+def load_config():
+    """Load and validate config.json with proper error handling"""
+    config_file = "config.json"
+    
+    try:
+        # Check if config file exists
+        if not os.path.exists(config_file):
+            print(f"ERROR: Config file '{config_file}' not found!")
+            print("Please run setup.py first to generate the configuration.")
+            exit(1)
+        
+        # Load and parse JSON
+        with open(config_file, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+        
+        # Validate required keys
+        required_keys = ["secret_key", "control_password", "API_VERSION"]
+        missing_keys = [key for key in required_keys if key not in config_data]
+        
+        if missing_keys:
+            print(f"ERROR: Missing required config keys: {missing_keys}")
+            print("Please check your config.json file or run setup.py again.")
+            exit(1)
+        
+        # Validate non-empty values
+        empty_keys = [key for key in required_keys if not config_data.get(key)]
+        if empty_keys:
+            print(f"ERROR: Empty config values for keys: {empty_keys}")
+            print("Please check your config.json file or run setup.py again.")
+            exit(1)
+        
+        print("✓ Config loaded successfully")
+        return config_data
+        
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Invalid JSON in config file: {e}")
+        print("Please check your config.json syntax or run setup.py again.")
+        exit(1)
+    except Exception as e:
+        print(f"ERROR: Failed to load config: {e}")
+        exit(1)
 
-DB_PATH = "dbs/client_keys.db"
-DB_PATH_LICENSE = "dbs/licenses.db"
+CONFIG = load_config()
+
+def _get_client_keys_db_path():
+    """Helper method to get consistent client keys database path"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "dbs", "client_keys.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    return db_path
+
+def _get_licenses_db_path():
+    """Helper method to get consistent licenses database path"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "dbs", "licenses.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    return db_path
+
+DB_PATH = _get_client_keys_db_path()
+DB_PATH_LICENSE = _get_licenses_db_path()
 API_VERSION = CONFIG.get("API_VERSION")
 
 
@@ -34,12 +90,6 @@ api_blueprint = Blueprint("api", __name__, url_prefix=f"/api/{API_VERSION}")
 app.secret_key = CONFIG.get("secret_key")
 
 @app.after_request
-def add_header(response):
-    response.headers['GITHUB_CREDITS'] = 'https://github.com/Fadi002'
-    response.headers['CREDITS'] = '0xmrpepe'
-    return response
-
-@api_blueprint.after_request
 def add_header(response):
     response.headers['GITHUB_CREDITS'] = 'https://github.com/Fadi002'
     response.headers['CREDITS'] = '0xmrpepe'
@@ -68,7 +118,9 @@ if not os.path.exists(DB_PATH_LICENSE):
     )
     conn.commit()
 
-if not os.path.exists("database/users.db"):
+# Initialize Users database using the proper path handling from db.Users
+users_db_path = db.Users._get_db_path()
+if not os.path.exists(users_db_path):
     db.Users.init()
 
 
